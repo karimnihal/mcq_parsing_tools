@@ -2,10 +2,10 @@ import pandas as pd
 import sys
 import os
 import argparse
-import random
 import string # Needed for generating valid options dynamically
+import traceback # For better error reporting
 
-# --- Helper Functions (Keep as is, but display_row adapted) ---
+# --- Helper Functions ---
 def clear_screen():
     """Clears the terminal screen."""
     os.system('cls' if os.name == 'nt' else 'clear')
@@ -17,7 +17,8 @@ def display_row(display_identifier, source_text, current_parsed, parsed_col_name
     if no_index_mode:
         print(f"Row Number (0-based): {display_identifier}") # Use row number if no index col
     else:
-        print(f"Index Column Value: {display_identifier}") # Use index col value
+        # Ensure display_identifier is a string for printing
+        print(f"Index Column Value: {str(display_identifier)}") # Use index col value
     print(f"Current '{parsed_col_name}': '{current_parsed if pd.notna(current_parsed) and current_parsed else '<empty>'}'")
     print("\nSource Column Content:")
     max_width = 80
@@ -62,7 +63,6 @@ def determine_file_params(file_path: str, specified_format: str = None, specifie
         if ext == '.csv': fmt = 'csv'
         elif ext == '.tsv': fmt = 'tsv'
         else: fmt = 'infer'
-        # print(f"Inferred format '{fmt}' for '{file_path}' based on extension.") # Less verbose
 
     if delim is None:
         if fmt == 'csv': delim = ','
@@ -93,7 +93,7 @@ def parse_arguments():
     # --- Indexing Arguments ---
     parser.add_argument("--index-col", default=None, dest='index_col_name',
                         help="Column name for aligning rows (must be unique & in both files if --output exists). "
-                             "If reading a file with pandas default 'Unnamed: 0', use that name. Required unless --no-index is used.")
+                             "Use 'Unnamed: 0' for pandas default index header. Required unless --no-index is used.")
     parser.add_argument("--no-index", action="store_true",
                         help="Indicate input file has NO dedicated index column. Process sequentially. Cannot reliably merge with existing output if row counts differ.")
 
@@ -137,6 +137,7 @@ def main():
     # --- Load Input Data ---
     try:
         print(f"Reading input file: '{args.input_file}' (Format: {input_format.upper()}, Delimiter: '{repr(input_delim)}')")
+        # Use keep_default_na=False to treat empty strings as '', not NaN
         read_kwargs = {'sep': input_delim, 'dtype': str, 'keep_default_na': False}
         if input_format == 'infer' or input_delim is None:
             read_kwargs['engine'] = 'python'
@@ -148,17 +149,18 @@ def main():
         # --- Validate Input Columns ---
         required_input_cols = {args.source_col_name}
         if not args.no_index:
-             required_input_cols.add(args.index_col_name) # Only require index_col if not --no-index
+             required_input_cols.add(args.index_col_name)
 
         missing_input_cols = required_input_cols - set(df_input.columns)
         if missing_input_cols:
             raise ValueError(f"Missing required columns in the input file '{args.input_file}': {missing_input_cols}. Available: {list(df_input.columns)}")
 
-        # If using index column, validate uniqueness and set index
+        # If using index column, set index for potential merging
         if not args.no_index:
             if not df_input[args.index_col_name].is_unique:
                 print(f"Warning: Index column '{args.index_col_name}' in input file '{args.input_file}' is not unique. Merging behavior might be unpredictable.")
-            df_input = df_input.set_index(args.index_col_name, drop=False) # Keep index col for display/saving
+            # Set index but keep the column itself for display/saving
+            df_input = df_input.set_index(args.index_col_name, drop=False)
 
     except FileNotFoundError:
         print(f"Error: Input file '{args.input_file}' not found."); sys.exit(1)
@@ -187,20 +189,19 @@ def main():
 
                 if len(df_output_existing) != len(df_input):
                      print(f"Warning: Row count mismatch! Input ({len(df_input)}) vs Output ({len(df_output_existing)}). Cannot reliably load existing answers. Starting fresh.")
-                     df_merged[args.parsed_col_name] = '' # Initialize empty column
+                     df_merged[args.parsed_col_name] = ''
                 elif args.parsed_col_name not in df_output_existing.columns:
                      print(f"Parsed column '{args.parsed_col_name}' not found in existing output. Adding it.")
                      df_merged[args.parsed_col_name] = ''
                 else:
                      print("Loading parsed answers positionally.")
-                     # Assign directly based on position (assuming indices are standard 0..N-1)
                      df_merged[args.parsed_col_name] = df_output_existing[args.parsed_col_name].values
             except Exception as e:
                 print(f"Error loading existing output file '{args.output_file}' in --no-index mode: {e}. Starting fresh.")
-                df_merged[args.parsed_col_name] = '' # Initialize empty column
+                df_merged[args.parsed_col_name] = ''
         else:
              print(f"Output file '{args.output_file}' not found. Adding new parsed column '{args.parsed_col_name}'.")
-             df_merged[args.parsed_col_name] = '' # Initialize empty column
+             df_merged[args.parsed_col_name] = ''
     else:
         # --- Index Column Mode ---
         print(f"Aligning input data with output using index '{args.index_col_name}'...")
@@ -216,17 +217,22 @@ def main():
                 if not df_output_existing[args.index_col_name].is_unique:
                     print(f"Warning: Index column '{args.index_col_name}' in output file '{args.output_file}' is not unique.")
 
+                # Set index for joining, keep column
                 df_output_existing = df_output_existing.set_index(args.index_col_name, drop=False)
 
                 if args.parsed_col_name not in df_output_existing.columns:
                     print(f"Parsed column '{args.parsed_col_name}' not found in existing output. Adding it.")
-                    df_output_existing[args.parsed_col_name] = ''
+                    # Initialize column before join if missing in output
+                    df_merged = df_input.copy() # Start from input
+                    df_merged[args.parsed_col_name] = '' # Add the empty column
+                    # Now update with any other columns from output if necessary (optional)
+                else:
+                    # Perform left join, keeping all rows from input
+                    # Select only the parsed column to avoid duplicates (like language etc.)
+                    df_merged = df_input.join(df_output_existing[[args.parsed_col_name]], how='left')
+                    print("Merge complete.")
 
-                # Left join input with the parsed column from output
-                df_merged = df_input.join(df_output_existing[[args.parsed_col_name]], how='left')
-                print("Merge complete.")
-
-            except FileNotFoundError: # Should not happen
+            except FileNotFoundError:
                  df_merged = df_input.copy(); df_merged[args.parsed_col_name] = ''
             except pd.errors.EmptyDataError:
                  print("Output file empty."); df_merged = df_input.copy(); df_merged[args.parsed_col_name] = ''
@@ -242,22 +248,24 @@ def main():
     df_merged[args.parsed_col_name] = df_merged[args.parsed_col_name].fillna('').astype(str)
 
     # --- Prepare for Loop ---
-    df_merged = df_merged.reset_index(drop=True) # Use standard 0..N-1 index for loop
+    # Reset index to use 0..N-1 for iloc, keep original index column if it exists
+    if not args.no_index:
+        df_merged = df_merged.reset_index(drop=True)
+    # If no_index, df_merged already has a standard 0..N-1 index
+
     total_rows = len(df_merged)
     quit_early = False
     start_row = 0 # Integer location index
 
     # --- Resume Logic ---
     try:
-        # Find first integer index (iloc) where parsed_col is invalid
         unparsed_ilocs = df_merged[~df_merged[args.parsed_col_name].isin(dynamic_valid_answers)].index
         if not unparsed_ilocs.empty:
              first_unparsed_iloc = unparsed_ilocs[0]
-             # Get identifier for message
              if args.no_index:
-                 display_id_for_resume = first_unparsed_iloc
-                 id_type = "row number"
+                 display_id_for_resume = first_unparsed_iloc; id_type = "row number"
              else:
+                 # Access original index value using iloc
                  display_id_for_resume = df_merged.iloc[first_unparsed_iloc][args.index_col_name]
                  id_type = f"index '{args.index_col_name}'"
 
@@ -272,10 +280,11 @@ def main():
     except Exception as e:
         print(f"Warning: Could not determine resume point ({e}). Starting from the beginning.")
 
+
     # --- Main Interaction Loop ---
     for i in range(start_row, total_rows):
         row_data = df_merged.iloc[i]
-        pandas_label = i # Use iloc index for .loc updates after reset_index
+        pandas_label = i # Use iloc index for .loc updates
 
         # Determine display identifier
         if args.no_index:
@@ -308,27 +317,21 @@ def main():
 
         if quit_early: break
 
-    # --- Save Results ---
+    # --- Save Results (Reverted Logic) ---
     try:
-        df_to_save = df_merged.copy()
-        actual_index_col_name_to_check = args.index_col_name # The original name specified
-
-        # Check if we need to blank out the header for the index column
-        should_blank_index_header = (not args.no_index and
-                                     actual_index_col_name_to_check == 'Unnamed: 0' and
-                                     actual_index_col_name_to_check in df_to_save.columns)
-
-        if should_blank_index_header:
-             print(f"Renaming column '{actual_index_col_name_to_check}' to '' for output header.")
-             df_to_save.rename(columns={actual_index_col_name_to_check: ''}, inplace=True)
+        df_to_save = df_merged.copy() # Work on a copy
 
         print(f"\nSaving {'progress' if quit_early else 'final results'} to '{args.output_file}' (Delimiter: '{repr(output_delim)}')...")
-        df_to_save.to_csv(args.output_file, sep=output_delim, index=False, encoding='utf-8')
+
+        # Always save with index=False. The index column (named or 'Unnamed: 0')
+        # is treated as a regular data column if it's present in df_to_save.
+        df_to_save.to_csv(args.output_file, sep=output_delim, index=False, header=True, encoding='utf-8')
+
         print(f"Successfully saved.")
 
     except Exception as e:
         print(f"\nError saving results to '{args.output_file}': {e}")
+        traceback.print_exc()
 
 if __name__ == "__main__":
-    import traceback # Added for better error reporting during dev/use
     main()

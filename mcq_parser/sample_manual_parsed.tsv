@@ -1,4 +1,4 @@
-	language	prompt_no	subject	gpt	answer	manual_answer
+Unnamed: 0	language	prompt_no	subject	model_output_text	answer	manual_label
 7940	hau	prompt_1	high_school_microeconomics	"b: wannan shine raguwar dawowar ma'auni a doguwar tafiya
 
 explanation: the scenario describes a situation where each additional unit of labor results in a smaller increase in output. initially, adding one unit of labor increases output by 50 units (from 300 to 350), but adding another unit of labor increases output by only 25 units (from 350 to 375). this pattern is characteristic of diminishing returns to a factor, which typically occurs in the short run when one factor of production is fixed. however, since the question mentions ""doguwar tafiya"" (long run), the correct interpretation is that it is describing diminishing returns to scale, which is a similar concept but applies when all factors of production can be varied."	D	b
