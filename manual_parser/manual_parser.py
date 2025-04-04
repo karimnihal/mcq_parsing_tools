@@ -2,23 +2,32 @@ import pandas as pd
 import sys
 import os
 import argparse
-import string # Needed for generating valid options dynamically
-import traceback # For better error reporting
+import string
+import traceback
 
-# --- Helper Functions ---
 def clear_screen():
-    """Clears the terminal screen."""
+    """Clears the terminal screen based on the operating system."""
     os.system('cls' if os.name == 'nt' else 'clear')
 
 def display_row(display_identifier, source_text, current_parsed, parsed_col_name, total_rows, current_row_num, no_index_mode=False):
-    """Displays the relevant information for the current row."""
+    """
+    Displays the current row information in a formatted way.
+    
+    Args:
+        display_identifier: Value from the index column or row number
+        source_text: The source text to be displayed
+        current_parsed: Current value in the parsed column
+        parsed_col_name: Name of the column containing parsed data
+        total_rows: Total number of rows in the dataset
+        current_row_num: Current row being processed (0-based)
+        no_index_mode: If True, uses row number as identifier
+    """
     print("-" * 60)
     print(f"Processing Row {current_row_num + 1} / {total_rows}")
     if no_index_mode:
-        print(f"Row Number (0-based): {display_identifier}") # Use row number if no index col
+        print(f"Row Number (0-based): {display_identifier}")
     else:
-        # Ensure display_identifier is a string for printing
-        print(f"Index Column Value: {str(display_identifier)}") # Use index col value
+        print(f"Index Column Value: {str(display_identifier)}")
     print(f"Current '{parsed_col_name}': '{current_parsed if pd.notna(current_parsed) and current_parsed else '<empty>'}'")
     print("\nSource Column Content:")
     max_width = 80
@@ -39,7 +48,17 @@ def display_row(display_identifier, source_text, current_parsed, parsed_col_name
     print("-" * 60)
 
 def generate_valid_options(option_format: str, option_range: str, no_answer_token: str) -> list[str]:
-    """Generates the list of valid single-character answers based on format and range."""
+    """
+    Generates a list of valid response options based on format and range.
+    
+    Args:
+        option_format: Format of options ("letter" or "number")
+        option_range: Range of options (e.g., "a-d", "1-6")
+        no_answer_token: Token used to indicate no valid answer
+        
+    Returns:
+        List of valid option characters
+    """
     valid_set = set()
     if option_format == "letter":
         valid_set = set(string.ascii_lowercase[:6]) if option_range == "a-f" else set(string.ascii_lowercase[:4])
@@ -54,7 +73,17 @@ def generate_valid_options(option_format: str, option_range: str, no_answer_toke
     return sorted(list(valid_set))
 
 def determine_file_params(file_path: str, specified_format: str = None, specified_delimiter: str = None) -> tuple[str, str]:
-    """Determines the format and delimiter for a given file."""
+    """
+    Determines file format and delimiter based on file extension and specifications.
+    
+    Args:
+        file_path: Path to the file
+        specified_format: Explicitly specified format (overrides auto-detection)
+        specified_delimiter: Explicitly specified delimiter (overrides defaults)
+        
+    Returns:
+        Tuple of (format, delimiter)
+    """
     fmt = specified_format
     delim = specified_delimiter
 
@@ -76,7 +105,12 @@ def determine_file_params(file_path: str, specified_format: str = None, specifie
 
 
 def parse_arguments():
-    """Parses command-line arguments."""
+    """
+    Parses command-line arguments and performs basic validation.
+    
+    Returns:
+        Namespace containing parsed arguments
+    """
     parser = argparse.ArgumentParser(
         description="Manually review text from an input file and assign/update a parsed answer in an output file.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
@@ -90,14 +124,12 @@ def parse_arguments():
     parser.add_argument("--parsed-col", required=True, dest='parsed_col_name',
                         help="Column name in the --output file to store/update the manual answer.")
 
-    # --- Indexing Arguments ---
     parser.add_argument("--index-col", default=None, dest='index_col_name',
                         help="Column name for aligning rows (must be unique & in both files if --output exists). "
                              "Use 'Unnamed: 0' for pandas default index header. Required unless --no-index is used.")
     parser.add_argument("--no-index", action="store_true",
                         help="Indicate input file has NO dedicated index column. Process sequentially. Cannot reliably merge with existing output if row counts differ.")
 
-    # --- Other Arguments ---
     parser.add_argument("--input-format", choices=["csv", "tsv", "txt", "infer"], default=None,
                        help="Format of input file. If None, attempts auto-detect from extension.")
     parser.add_argument("--delimiter", default=None,
@@ -123,21 +155,27 @@ def parse_arguments():
     return args
 
 def main():
+    """
+    Main function that handles the manual parsing workflow:
+    1. Load and validate input/output files
+    2. Merge existing parsed answers if available
+    3. Handle interactive review and update of each row
+    4. Save final results
+    """
     args = parse_arguments()
 
-    # --- Determine Valid Answers ---
+    # Determine valid answers based on configured options
     dynamic_valid_answers = generate_valid_options(args.option_format, args.option_range, args.no_answer_token)
     valid_answers_str = "/".join(dynamic_valid_answers)
     print(f"Expecting manual inputs from: [{valid_answers_str}]")
 
-    # --- Determine File Formats/Delimiters ---
+    # Determine file formats and delimiters
     input_format, input_delim = determine_file_params(args.input_file, args.input_format, args.delimiter)
     output_format, output_delim = determine_file_params(args.output_file, None, args.delimiter)
 
-    # --- Load Input Data ---
+    # Load input data
     try:
         print(f"Reading input file: '{args.input_file}' (Format: {input_format.upper()}, Delimiter: '{repr(input_delim)}')")
-        # Use keep_default_na=False to treat empty strings as '', not NaN
         read_kwargs = {'sep': input_delim, 'dtype': str, 'keep_default_na': False}
         if input_format == 'infer' or input_delim is None:
             read_kwargs['engine'] = 'python'
@@ -146,7 +184,7 @@ def main():
         df_input = pd.read_csv(args.input_file, **read_kwargs)
         print(f"Successfully loaded {len(df_input)} rows from '{args.input_file}'.")
 
-        # --- Validate Input Columns ---
+        # Validate input columns
         required_input_cols = {args.source_col_name}
         if not args.no_index:
              required_input_cols.add(args.index_col_name)
@@ -159,7 +197,6 @@ def main():
         if not args.no_index:
             if not df_input[args.index_col_name].is_unique:
                 print(f"Warning: Index column '{args.index_col_name}' in input file '{args.input_file}' is not unique. Merging behavior might be unpredictable.")
-            # Set index but keep the column itself for display/saving
             df_input = df_input.set_index(args.index_col_name, drop=False)
 
     except FileNotFoundError:
@@ -171,14 +208,14 @@ def main():
     except Exception as e:
         print(f"Error loading/validating input file '{args.input_file}': {e}"); traceback.print_exc(); sys.exit(1)
 
-    # --- Load or Initialize Output Data/Merge ---
+    # Load or initialize output data and merge with input
     df_output_existing = None
     df_merged = None
 
     if args.no_index:
-        # --- No Index Mode ---
+        # No Index Mode - rely on row position
         print("Running in --no-index mode. Row order is critical.")
-        df_merged = df_input.copy() # Start with input data structure
+        df_merged = df_input.copy()
         if os.path.exists(args.output_file):
             print(f"Attempting to load existing answers from '{args.output_file}' assuming row-by-row alignment...")
             try:
@@ -203,7 +240,7 @@ def main():
              print(f"Output file '{args.output_file}' not found. Adding new parsed column '{args.parsed_col_name}'.")
              df_merged[args.parsed_col_name] = ''
     else:
-        # --- Index Column Mode ---
+        # Index Column Mode - align by index value
         print(f"Aligning input data with output using index '{args.index_col_name}'...")
         if os.path.exists(args.output_file):
             try:
@@ -217,18 +254,14 @@ def main():
                 if not df_output_existing[args.index_col_name].is_unique:
                     print(f"Warning: Index column '{args.index_col_name}' in output file '{args.output_file}' is not unique.")
 
-                # Set index for joining, keep column
                 df_output_existing = df_output_existing.set_index(args.index_col_name, drop=False)
 
                 if args.parsed_col_name not in df_output_existing.columns:
                     print(f"Parsed column '{args.parsed_col_name}' not found in existing output. Adding it.")
-                    # Initialize column before join if missing in output
-                    df_merged = df_input.copy() # Start from input
-                    df_merged[args.parsed_col_name] = '' # Add the empty column
-                    # Now update with any other columns from output if necessary (optional)
+                    df_merged = df_input.copy()
+                    df_merged[args.parsed_col_name] = ''
                 else:
                     # Perform left join, keeping all rows from input
-                    # Select only the parsed column to avoid duplicates (like language etc.)
                     df_merged = df_input.join(df_output_existing[[args.parsed_col_name]], how='left')
                     print("Merge complete.")
 
@@ -247,17 +280,15 @@ def main():
     # Ensure parsed_col is string and fill NaNs from join/init
     df_merged[args.parsed_col_name] = df_merged[args.parsed_col_name].fillna('').astype(str)
 
-    # --- Prepare for Loop ---
-    # Reset index to use 0..N-1 for iloc, keep original index column if it exists
+    # Prepare for interactive loop
     if not args.no_index:
         df_merged = df_merged.reset_index(drop=True)
-    # If no_index, df_merged already has a standard 0..N-1 index
 
     total_rows = len(df_merged)
     quit_early = False
-    start_row = 0 # Integer location index
+    start_row = 0
 
-    # --- Resume Logic ---
+    # Determine resume point
     try:
         unparsed_ilocs = df_merged[~df_merged[args.parsed_col_name].isin(dynamic_valid_answers)].index
         if not unparsed_ilocs.empty:
@@ -265,7 +296,6 @@ def main():
              if args.no_index:
                  display_id_for_resume = first_unparsed_iloc; id_type = "row number"
              else:
-                 # Access original index value using iloc
                  display_id_for_resume = df_merged.iloc[first_unparsed_iloc][args.index_col_name]
                  id_type = f"index '{args.index_col_name}'"
 
@@ -280,11 +310,10 @@ def main():
     except Exception as e:
         print(f"Warning: Could not determine resume point ({e}). Starting from the beginning.")
 
-
-    # --- Main Interaction Loop ---
+    # Main interactive row processing loop
     for i in range(start_row, total_rows):
         row_data = df_merged.iloc[i]
-        pandas_label = i # Use iloc index for .loc updates
+        pandas_label = i
 
         # Determine display identifier
         if args.no_index:
@@ -298,7 +327,7 @@ def main():
         clear_screen()
         display_row(display_id, source_text_display, current_parsed_val, args.parsed_col_name, total_rows, i, args.no_index)
 
-        # Get User Input
+        # Get user input for this row
         while True:
             prompt = f"Enter parsed answer ({valid_answers_str}), 's' to skip, 'q' to save & quit: "
             user_input = input(prompt).lower().strip()
@@ -317,14 +346,12 @@ def main():
 
         if quit_early: break
 
-    # --- Save Results (Reverted Logic) ---
+    # Save results to output file
     try:
-        df_to_save = df_merged.copy() # Work on a copy
+        df_to_save = df_merged.copy()
 
         print(f"\nSaving {'progress' if quit_early else 'final results'} to '{args.output_file}' (Delimiter: '{repr(output_delim)}')...")
 
-        # Always save with index=False. The index column (named or 'Unnamed: 0')
-        # is treated as a regular data column if it's present in df_to_save.
         df_to_save.to_csv(args.output_file, sep=output_delim, index=False, header=True, encoding='utf-8')
 
         print(f"Successfully saved.")
