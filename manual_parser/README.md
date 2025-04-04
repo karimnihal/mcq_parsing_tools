@@ -21,12 +21,7 @@ This script provides a simple interface to step through rows of data, view speci
 
 ## Installation
 
-The script requires Python 3 and the pandas library.
-
-```bash
-# Install pandas if you haven't already
-pip install pandas
-```
+This script requires Python 3 and pandas.
 
 ## Usage
 

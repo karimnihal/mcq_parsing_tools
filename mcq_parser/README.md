@@ -20,14 +20,7 @@ MCQ Parser is designed to extract and analyze answers in multiple-choice questio
 
 ## Installation
 
-```bash
-# Clone the repository (if you haven't already)
-# git clone https://github.com/your-username/mcq-parser.git
-# cd mcq-parser
-
-# Install dependencies
-pip install pandas scikit-learn requests
-```
+This script requires Python 3, pandas, scikit-learn, and requests.
 
 ### Ollama Setup (Optional but Required for LLM Features)
 
