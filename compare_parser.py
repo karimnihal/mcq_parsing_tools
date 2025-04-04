@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import argparse
 import subprocess
 import pandas as pd
@@ -8,8 +6,8 @@ import os
 import logging
 import sys
 import shutil
-import csv # Import csv for quoting constants
-import time # For timestamp
+import csv
+import time
 
 # --- Configuration ---
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -193,7 +191,6 @@ def main():
     setup_file_logger(args.log)
 
     # --- Basic Arg Validation ---
-    # (Keep validation logic)
     if args.mode in ['llm', 'both'] and not args.llm_model: logging.error("LLM model needed for mode '%s'", args.mode); sys.exit(1)
     if not os.path.exists(args.input): logging.error(f"Input file not found: {args.input}"); sys.exit(1)
     if not os.path.exists(MCQ_PARSER_SCRIPT): logging.error(f"mcq_parser.py script not found: {MCQ_PARSER_SCRIPT}"); sys.exit(1)
@@ -216,7 +213,6 @@ def main():
         # Use .tsv suffix to force mcq_parser to SAVE as TSV
         with tempfile.NamedTemporaryFile(suffix=".tsv", delete=False) as tmp_out:
             temp_output_file = tmp_out.name
-        # logging.info(f"Using temporary metrics/output file: {temp_output_file}") # Less verbose
 
         # --- Run the Parser ---
         actual_processed_path, processed_file_delimiter = run_parser(args, args.input, temp_output_file)
@@ -227,14 +223,11 @@ def main():
              sys.exit(exit_code)
 
         # --- Read Files ---
-        # logging.info("Reading original input file...") # Less verbose
         original_df = pd.read_csv(args.input, sep='\t', keep_default_na=False, na_values=[''])
-        # logging.info(f"Reading processed output file '{actual_processed_path}'...") # Less verbose
         processed_df = pd.read_csv(
             actual_processed_path, sep=processed_file_delimiter, engine='python',
             quoting=csv.QUOTE_MINIMAL, keep_default_na=False, na_values=['']
         )
-        # logging.info(f"Successfully read files.") # Less verbose
 
         # --- Validate Columns ---
         required_original_cols = {MANUAL_COL}
@@ -274,10 +267,10 @@ def main():
     finally:
         # --- Cleanup ---
         if temp_output_file and os.path.exists(temp_output_file):
-            try: os.remove(temp_output_file) # logging.info(f"Removed temporary file: {temp_output_file}") # Less verbose
+            try: os.remove(temp_output_file)
             except OSError as e: logging.warning(f"Could not remove temporary file {temp_output_file}: {e}")
         if actual_processed_path and actual_processed_path != temp_output_file and os.path.exists(actual_processed_path):
-             try: os.remove(actual_processed_path) # logging.info(f"Removed temporary processed file: {actual_processed_path}") # Less verbose
+             try: os.remove(actual_processed_path)
              except OSError as e: logging.warning(f"Could not remove temporary processed file {actual_processed_path}: {e}")
 
         end_time = time.time()
