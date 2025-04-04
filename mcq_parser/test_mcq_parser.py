@@ -3,14 +3,16 @@ import pandas as pd
 import numpy as np
 import random
 import os
-import json # Needed for mocking JSON responses
+import json
 from unittest.mock import patch, MagicMock, call
 
-# Import the module containing the functions to test
+# Import modules for testing
 import mcq_parser
-import requests # Import requests to mock its exceptions
+import requests
 
-# --- Tests for extract_predicted_option ---
+# ============================================================================
+# Tests for extract_predicted_option
+# ============================================================================
 
 @pytest.mark.parametrize(
     "text, option_format, option_range, expected_output",
@@ -22,7 +24,7 @@ import requests # Import requests to mock its exceptions
         ("option d is correct", "letter", "a-d", "d"),
         ("a: Explanation", "letter", "a-d", "a"),
         ("b. Because...", "letter", "a-d", "b"),
-        ("This is c", "letter", "a-d", 'c'), # Standalone 'c' is matched by pattern 2
+        ("This is c", "letter", "a-d", 'c'),
         ("The option is a", "letter", "a-d", "a"),
         ("correct answer is b", "letter", "a-d", "b"),
         ("b is correct", "letter", "a-d", "b"),
@@ -61,30 +63,37 @@ import requests # Import requests to mock its exceptions
         # Priority (Colon/Period should often win over standalone/less specific indicators)
         ("d) is correct. Final answer: c:", "letter", "a-d", "c"),
         ("the answer is b. This is because...", "letter", "a-d", "b"),
-        ("The a option vs the answer: b", "letter", "a-d", "b"), # prioritize answer: b
+        ("The a option vs the answer: b", "letter", "a-d", "b"),
 
         # Edge Cases & No Match
-        ("(a)", "letter", "a-d", "a"), # Parentheses might be stripped by later logic, but regex might catch 'a'
-        ("[b].", "letter", "a-d", "b"), # standalone 'b' then period
+        ("(a)", "letter", "a-d", "a"),
+        ("[b].", "letter", "a-d", "b"),
         ("'c':", "letter", "a-d", "c"),
         ("This text has no valid option.", "letter", "a-d", None),
-        ("tablecloth", "letter", "a-d", None), # 'c' is embedded
-        ("1234", "number", "1-4", None), # No clear delimiter/indicator for single choice
-        ("Answer is 5", "number", "1-4", None), # Out of range
-        ("Answer is g", "letter", "a-f", None), # Out of range
+        ("tablecloth", "letter", "a-d", None),
+        ("1234", "number", "1-4", None),
+        ("Answer is 5", "number", "1-4", None),
+        ("Answer is g", "letter", "a-f", None),
         (None, "letter", "a-d", None),
         ("", "letter", "a-d", None),
         (" ", "letter", "a-d", None),
-        ("Maybe a", "letter", "a-d", "a"), # 'a' standalone match
-        ("The answer could be b", "letter", "a-d", "b"), # 'answer ... b' pattern
+        ("Maybe a", "letter", "a-d", "a"),
+        ("The answer could be b", "letter", "a-d", "b"),
     ]
 )
 def test_extract_predicted_option(text, option_format, option_range, expected_output):
-    """Tests the regex extraction logic for various formats and edge cases."""
+    """
+    Test the regex extraction logic for various formats and edge cases.
+    
+    This test verifies that the extract_predicted_option function correctly
+    identifies MCQ answers in different text formats and handles edge cases.
+    """
     assert mcq_parser.extract_predicted_option(text, option_format, option_range) == expected_output
 
 
-# --- Tests for verbalizer ---
+# ============================================================================
+# Tests for verbalizer
+# ============================================================================
 
 @pytest.mark.parametrize(
     "text, option_format, option_range, no_answer_token, expected_output",
@@ -107,12 +116,12 @@ def test_extract_predicted_option(text, option_format, option_range, expected_ou
         # First Option Priority
         ("a or b", "letter", "a-d", "x", "a"),
         ("1, maybe 2?", "number", "1-4", "x", "1"),
-        ("Answer x or c", "letter", "a-d", "x", "x"), # 'x' comes first
+        ("Answer x or c", "letter", "a-d", "x", "x"),
 
         # No Valid Option
         ("Invalid choice", "letter", "a-d", "x", None),
-        ("5", "number", "1-4", "x", None), # Out of range
-        ("g", "letter", "a-f", "x", None), # Out of range
+        ("5", "number", "1-4", "x", None),
+        ("g", "letter", "a-f", "x", None),
         ("xyz", "letter", "a-d", "x", None),
 
         # None/Empty Input
@@ -127,19 +136,27 @@ def test_extract_predicted_option(text, option_format, option_range, expected_ou
 
         # Custom No Answer Token
         ("n/a", "letter", "a-d", "n/a", "n/a"),
-        ("No answer provided.", "letter", "a-d", "n/a", None), # "n/a" not present
+        ("No answer provided.", "letter", "a-d", "n/a", None),
         ("The answer is n/a", "letter", "a-d", "n/a", None),
     ]
 )
 def test_verbalizer(text, option_format, option_range, no_answer_token, expected_output):
-    """Tests the normalization logic of the verbalizer function."""
+    """
+    Test the normalization logic of the verbalizer function.
+    
+    This test ensures the verbalizer correctly normalizes extracted text
+    into standardized option formats, handling special tokens and edge cases.
+    """
     assert mcq_parser.verbalizer(text, option_format, option_range, no_answer_token) == expected_output
 
 
-# --- Tests for assign_label ---
+# ============================================================================
+# Tests for assign_label
+# ============================================================================
 
 # Helper function to check random results
 def check_random_output(output, possible_set):
+    """Check if a randomly assigned output is within the expected set of possibilities."""
     print(f"Checking if '{output}' is in {possible_set}")
     return output in possible_set
 
@@ -147,26 +164,26 @@ def check_random_output(output, possible_set):
     "row_dict, target_col, reference_col, handle_x, option_format, option_range, no_answer_token, expected_output",
     [
         # Basic Valid Predictions
-        ({'pred': 'a', 'ref': 'a'}, 'pred', 'ref', 'random', 'letter', 'a-d', 'x', 'a'), # Correct
-        ({'pred': 'b', 'ref': 'a'}, 'pred', 'ref', 'random', 'letter', 'a-d', 'x', 'b'), # Incorrect but valid
+        ({'pred': 'a', 'ref': 'a'}, 'pred', 'ref', 'random', 'letter', 'a-d', 'x', 'a'),
+        ({'pred': 'b', 'ref': 'a'}, 'pred', 'ref', 'random', 'letter', 'a-d', 'x', 'b'),
 
         # Handling 'x' (no_answer_token)
         ({'pred': 'x', 'ref': 'a'}, 'pred', 'ref', 'none', 'letter', 'a-d', 'x', None),
         ({'pred': 'x', 'ref': 'a'}, 'pred', 'ref', 'keep', 'letter', 'a-d', 'x', 'x'),
-        ({'pred': 'x', 'ref': 'a'}, 'pred', 'ref', 'random', 'letter', 'a-d', 'x', {'b', 'c', 'd'}), # Random incorrect
-        ({'pred': 'x', 'ref': 'd'}, 'pred', 'ref', 'random', 'letter', 'a-d', 'x', {'a', 'b', 'c'}), # Random incorrect
-        ({'pred': 'x', 'ref': '1'}, 'pred', 'ref', 'random', 'number', '1-4', 'x', {'2', '3', '4'}), # Random incorrect (number)
+        ({'pred': 'x', 'ref': 'a'}, 'pred', 'ref', 'random', 'letter', 'a-d', 'x', {'b', 'c', 'd'}),
+        ({'pred': 'x', 'ref': 'd'}, 'pred', 'ref', 'random', 'letter', 'a-d', 'x', {'a', 'b', 'c'}),
+        ({'pred': 'x', 'ref': '1'}, 'pred', 'ref', 'random', 'number', '1-4', 'x', {'2', '3', '4'}),
 
-        # Handling None/Invalid Predictions (Should act like 'random' assigned)
+        # Handling None/Invalid Predictions
         ({'pred': None, 'ref': 'b'}, 'pred', 'ref', 'random', 'letter', 'a-d', 'x', {'a', 'c', 'd'}),
         ({'pred': 'z', 'ref': 'c'}, 'pred', 'ref', 'random', 'letter', 'a-d', 'x', {'a', 'b', 'd'}),
-        ({'pred': None, 'ref': 'b'}, 'pred', 'ref', 'none', 'letter', 'a-d', 'x', {'a', 'c', 'd'}), # handle_x='none' only applies to 'x', not None/invalid
-        ({'pred': '', 'ref': 'd'}, 'pred', 'ref', 'keep', 'letter', 'a-d', 'x', {'a', 'b', 'c'}), # handle_x='keep' only applies to 'x'
+        ({'pred': None, 'ref': 'b'}, 'pred', 'ref', 'none', 'letter', 'a-d', 'x', {'a', 'c', 'd'}),
+        ({'pred': '', 'ref': 'd'}, 'pred', 'ref', 'keep', 'letter', 'a-d', 'x', {'a', 'b', 'c'}),
 
         # Random assignment when reference is missing or invalid
-        ({'pred': 'x'}, 'pred', None, 'random', 'letter', 'a-d', 'x', {'a', 'b', 'c', 'd'}), # No reference col
-        ({'pred': 'x', 'ref': None}, 'pred', 'ref', 'random', 'letter', 'a-d', 'x', {'a', 'b', 'c', 'd'}), # Ref col exists but is None
-        ({'pred': 'x', 'ref': 'z'}, 'pred', 'ref', 'random', 'letter', 'a-d', 'x', {'a', 'b', 'c', 'd'}), # Ref is not a standard label
+        ({'pred': 'x'}, 'pred', None, 'random', 'letter', 'a-d', 'x', {'a', 'b', 'c', 'd'}),
+        ({'pred': 'x', 'ref': None}, 'pred', 'ref', 'random', 'letter', 'a-d', 'x', {'a', 'b', 'c', 'd'}),
+        ({'pred': 'x', 'ref': 'z'}, 'pred', 'ref', 'random', 'letter', 'a-d', 'x', {'a', 'b', 'c', 'd'}),
 
         # Different Ranges/Formats with Random
         ({'pred': 'x', 'ref': 'f'}, 'pred', 'ref', 'random', 'letter', 'a-f', 'x', {'a', 'b', 'c', 'd', 'e'}),
@@ -179,9 +196,14 @@ def check_random_output(output, possible_set):
     ]
 )
 def test_assign_label(row_dict, target_col, reference_col, handle_x, option_format, option_range, no_answer_token, expected_output):
-    """Tests the final label assignment logic based on handle_x and prediction validity."""
-    # Simulate a DataFrame row using the dictionary
-    # In newer pandas, direct dict use might be fine, but Series is safer
+    """
+    Test the final label assignment logic.
+    
+    This test verifies that the assign_label function correctly handles different
+    scenarios for final prediction assignment, including the special treatment of
+    the no_answer_token based on the handle_x parameter.
+    """
+    # Simulate a DataFrame row using a Series
     row = pd.Series(row_dict)
 
     actual_output = mcq_parser.assign_label(
@@ -195,10 +217,18 @@ def test_assign_label(row_dict, target_col, reference_col, handle_x, option_form
         # Check for exact match for non-random cases
         assert actual_output == expected_output
 
-# --- Tests for load_examples ---
+
+# ============================================================================
+# Tests for load_examples
+# ============================================================================
 
 def test_load_examples_valid_file(tmp_path):
-    """Tests loading a valid examples file."""
+    """
+    Test loading a valid examples file.
+    
+    Verifies that the load_examples function correctly parses a properly formatted
+    examples file with various line formats.
+    """
     content = """
 # This is a comment
 Input Text 1 ::: a
@@ -224,13 +254,13 @@ Last one ::: x
     assert actual_output == expected_output
 
 def test_load_examples_empty_file(tmp_path):
-    """Tests loading an empty examples file."""
+    """Test loading an empty examples file, which should return an empty list."""
     examples_file = tmp_path / "empty_examples.txt"
     examples_file.write_text("", encoding='utf-8')
     assert mcq_parser.load_examples(str(examples_file)) == []
 
 def test_load_examples_comments_only_file(tmp_path):
-    """Tests loading a file with only comments and blank lines."""
+    """Test loading a file with only comments and blank lines."""
     content = """
 # Comment 1
 # Comment 2
@@ -242,8 +272,13 @@ def test_load_examples_comments_only_file(tmp_path):
     assert mcq_parser.load_examples(str(examples_file)) == []
 
 def test_load_examples_invalid_lines(tmp_path, capsys):
-    """Tests loading a file with some invalid lines (missing separator)."""
-    # Corrected content string (no leading newline)
+    """
+    Test loading a file with some invalid lines.
+    
+    Verifies that the load_examples function correctly handles lines
+    that don't follow the expected format, skipping invalid ones and
+    logging appropriate warnings.
+    """
     content = """Valid Line 1 ::: a
 Invalid Line 2 (no separator)
 Valid Line 3 ::: c
@@ -262,7 +297,7 @@ Invalid Line 5 missing text ::: d"""
     actual_output = mcq_parser.load_examples(str(examples_file))
     assert actual_output == expected_output
 
-    # Check warnings for the skipped line - Now it should correctly be line 2
+    # Check warnings for the skipped line
     captured = capsys.readouterr()
     assert "Skipping invalid line 2" in captured.err or "Skipping invalid line 2" in captured.out
     assert "missing ':::'" in captured.err or "missing ':::'" in captured.out
@@ -272,53 +307,51 @@ Invalid Line 5 missing text ::: d"""
     assert "Skipping invalid line 5" not in captured.err and "Skipping invalid line 5" not in captured.out
 
 def test_load_examples_file_not_found(tmp_path, capsys):
-    """Tests behavior when the examples file does not exist."""
+    """Test behavior when the examples file does not exist."""
     non_existent_file = tmp_path / "non_existent.txt"
     assert mcq_parser.load_examples(str(non_existent_file)) is None
     captured = capsys.readouterr()
     assert "Warning: Examples file not found" in captured.err or "Warning: Examples file not found" in captured.out
 
 def test_load_examples_path_is_none():
-    """Tests behavior when None is passed as the path."""
+    """Test behavior when None is passed as the path."""
     assert mcq_parser.load_examples(None) is None
 
-# --- Tests for calculate_metric ---
+
+# ============================================================================
+# Tests for calculate_metric
+# ============================================================================
 
 # Sample data for calculate_metric tests
 @pytest.fixture
 def sample_metric_data():
+    """Fixture providing sample data for metric calculation tests."""
     return pd.DataFrame({
         'language': ['en', 'en', 'en', 'fr', 'fr', 'en', 'fr', 'es', 'es', 'es'],
         'prompt_no': ['1', '1', '2', '1', '1', '1', '1', '3', '3', '3'],
-        'final_prediction': ['a', 'b', 'c', 'a', 'a', 'x', None, 'd', 'c', 'd'], # Contains 'x' and None
+        'final_prediction': ['a', 'b', 'c', 'a', 'a', 'x', None, 'd', 'c', 'd'],
         'reference_answer': ['a', 'a', 'c', 'b', 'a', 'a', 'b', 'd', 'd', 'd']
     })
 
 def test_calculate_metric_basic(sample_metric_data):
-    """Tests basic accuracy calculation and grouping."""
-    # Manually apply filtering similar to how calculate_metric does internally
-    # Filter out 'x' and None from 'final_prediction' before calculation
-    filtered_for_calc = sample_metric_data[
-        sample_metric_data['final_prediction'].notna() & (sample_metric_data['final_prediction'] != 'x')
-    ].copy()
-
-    # Expected results based on filtered_for_calc:
-    # en-1: pred=['a', 'b'], ref=['a', 'a'] -> 1 correct / 2 total = 50% (Original total: 4)
-    # en-2: pred=['c'], ref=['c'] -> 1 correct / 1 total = 100% (Original total: 1)
-    # fr-1: pred=['a', 'a'], ref=['b', 'a'] -> 1 correct / 2 total = 50% (Original total: 3)
-    # es-3: pred=['d', 'c', 'd'], ref=['d', 'd', 'd'] -> 2 correct / 3 total = 66.67% (Original total: 3)
-
-    results_df = mcq_parser.calculate_metric(sample_metric_data.copy(), 'final_prediction', 'reference_answer') # Pass copy
+    """
+    Test basic accuracy calculation and grouping.
+    
+    Verifies that the calculate_metric function correctly groups data
+    by language and prompt, filters out invalid predictions, and calculates
+    accuracy metrics for each group.
+    """
+    results_df = mcq_parser.calculate_metric(sample_metric_data.copy(), 'final_prediction', 'reference_answer')
 
     assert not results_df.empty
-    assert len(results_df) == 4 # 4 groups (en-1, en-2, fr-1, es-3)
+    assert len(results_df) == 4  # 4 groups (en-1, en-2, fr-1, es-3)
 
     # Check en-1
     en1 = results_df[(results_df['language'] == 'en') & (results_df['prompt_no'] == '1')].iloc[0]
     assert en1['accuracy'] == 50.00
     assert en1['correct'] == 1
     assert en1['count_in_calc'] == 2
-    assert en1['total_original'] == 3 # Correct based on sample data provided
+    assert en1['total_original'] == 3
 
     # Check en-2
     en2 = results_df[(results_df['language'] == 'en') & (results_df['prompt_no'] == '2')].iloc[0]
@@ -332,7 +365,7 @@ def test_calculate_metric_basic(sample_metric_data):
     assert fr1['accuracy'] == 50.00
     assert fr1['correct'] == 1
     assert fr1['count_in_calc'] == 2
-    assert fr1['total_original'] == 3 # Includes the None
+    assert fr1['total_original'] == 3
 
     # Check es-3
     es3 = results_df[(results_df['language'] == 'es') & (results_df['prompt_no'] == '3')].iloc[0]
@@ -342,7 +375,7 @@ def test_calculate_metric_basic(sample_metric_data):
     assert es3['total_original'] == 3
 
 def test_calculate_metric_all_filtered(capsys):
-    """Tests when all predictions are None or 'x'."""
+    """Test when all predictions are None or 'x' and should be filtered out."""
     df = pd.DataFrame({
         'language': ['en', 'en'],
         'prompt_no': ['1', '1'],
@@ -355,14 +388,17 @@ def test_calculate_metric_all_filtered(capsys):
     assert "Warning: No valid predictions available for comparison" in captured.out
 
 def test_calculate_metric_empty_input():
-    """Tests with an empty input DataFrame."""
+    """Test with an empty input DataFrame."""
     df = pd.DataFrame(columns=['language', 'prompt_no', 'final_prediction', 'reference_answer'])
     results_df = mcq_parser.calculate_metric(df, 'final_prediction', 'reference_answer')
     assert results_df.empty
 
-# --- Tests for check_ollama_availability ---
 
-# Define some mock JSON responses
+# ============================================================================
+# Tests for check_ollama_availability
+# ============================================================================
+
+# Define mock JSON responses
 MOCK_MODELS_WITH_LLAMA3 = {
     "models": [
         {"name": "mistral:latest", "modified_at": "...", "size": 123},
@@ -382,9 +418,9 @@ MOCK_MODELS_INVALID_STRUCTURE = {"data": []}
 MOCK_MODELS_NOT_A_LIST = {"models": "this is not a list"}
 
 
-@patch('requests.get') # Patch the requests.get function
+@patch('requests.get')
 def test_check_ollama_availability_model_present(mock_get):
-    """Tests when the model exists in the Ollama list."""
+    """Test when the requested model exists in the Ollama list."""
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = MOCK_MODELS_WITH_LLAMA3
@@ -395,7 +431,7 @@ def test_check_ollama_availability_model_present(mock_get):
 
 @patch('requests.get')
 def test_check_ollama_availability_model_present_different_tag(mock_get):
-    """Tests when a model with the same base name but different tag exists."""
+    """Test when a model with the same base name but different tag exists."""
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = MOCK_MODELS_WITH_LLAMA3
@@ -407,7 +443,7 @@ def test_check_ollama_availability_model_present_different_tag(mock_get):
 
 @patch('requests.get')
 def test_check_ollama_availability_model_absent(mock_get):
-    """Tests when the model does not exist in the Ollama list."""
+    """Test when the requested model does not exist in the Ollama list."""
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = MOCK_MODELS_WITHOUT_LLAMA3
@@ -417,27 +453,25 @@ def test_check_ollama_availability_model_absent(mock_get):
 
 @patch('requests.get')
 def test_check_ollama_availability_connection_error(mock_get, capsys):
-    """Tests connection error during the API call."""
+    """Test connection error during the API call."""
     mock_get.side_effect = requests.exceptions.ConnectionError("Failed to connect")
 
     assert mcq_parser.check_ollama_availability("llama3:latest") is False
     captured = capsys.readouterr()
-    # Check stdout for the actual printed message
-    assert "Ollama API check failed: Failed to connect" in captured.out # Match actual output
+    assert "Ollama API check failed: Failed to connect" in captured.out
 
 @patch('requests.get')
 def test_check_ollama_availability_timeout(mock_get, capsys):
-    """Tests timeout during the API call."""
+    """Test timeout during the API call."""
     mock_get.side_effect = requests.exceptions.Timeout("Request timed out")
 
     assert mcq_parser.check_ollama_availability("llama3:latest") is False
     captured = capsys.readouterr()
-    # Check stdout for the actual printed message
-    assert "Ollama API check failed: Request timed out" in captured.out # Match actual output
+    assert "Ollama API check failed: Request timed out" in captured.out
 
 @patch('requests.get')
 def test_check_ollama_availability_request_exception(mock_get, capsys):
-    """Tests other request exceptions during the API call."""
+    """Test other request exceptions during the API call."""
     mock_get.side_effect = requests.exceptions.RequestException("Some other error")
 
     assert mcq_parser.check_ollama_availability("llama3:latest") is False
@@ -446,7 +480,7 @@ def test_check_ollama_availability_request_exception(mock_get, capsys):
 
 @patch('requests.get')
 def test_check_ollama_availability_bad_status(mock_get, capsys):
-    """Tests non-200 HTTP status code response."""
+    """Test non-200 HTTP status code response."""
     mock_response = MagicMock()
     mock_response.status_code = 404
     mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError("Not Found")
@@ -458,7 +492,7 @@ def test_check_ollama_availability_bad_status(mock_get, capsys):
 
 @patch('requests.get')
 def test_check_ollama_availability_invalid_json(mock_get, capsys):
-    """Tests response that is not valid JSON."""
+    """Test response that is not valid JSON."""
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.side_effect = json.JSONDecodeError("Expecting value", "doc", 0)
@@ -470,7 +504,7 @@ def test_check_ollama_availability_invalid_json(mock_get, capsys):
 
 @patch('requests.get')
 def test_check_ollama_availability_json_missing_key(mock_get, capsys):
-    """Tests JSON response missing the 'models' key."""
+    """Test JSON response missing the 'models' key."""
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = MOCK_MODELS_INVALID_STRUCTURE
@@ -482,7 +516,7 @@ def test_check_ollama_availability_json_missing_key(mock_get, capsys):
 
 @patch('requests.get')
 def test_check_ollama_availability_json_models_not_list(mock_get, capsys):
-    """Tests JSON response where 'models' is not a list."""
+    """Test JSON response where 'models' is not a list."""
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = MOCK_MODELS_NOT_A_LIST
@@ -493,12 +527,19 @@ def test_check_ollama_availability_json_models_not_list(mock_get, capsys):
     assert "Ollama API returned unexpected 'models' format" in captured.out
 
 
-# --- Tests for call_ollama_api ---
+# ============================================================================
+# Tests for call_ollama_api
+# ============================================================================
 
-@patch('time.sleep', return_value=None) # Mock time.sleep to avoid delays
+@patch('time.sleep', return_value=None)
 @patch('requests.post')
 def test_call_ollama_api_success_basic(mock_post, mock_sleep):
-    """Tests a successful API call returning a simple response."""
+    """
+    Test a successful API call returning a simple response.
+    
+    Verifies that the call_ollama_api function correctly formats the request
+    to the Ollama API and processes a basic successful response.
+    """
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = {"response": " a "}
@@ -511,7 +552,7 @@ def test_call_ollama_api_success_basic(mock_post, mock_sleep):
 
     result = mcq_parser.call_ollama_api(prompt, model, valid_options, max_tokens, enable_cot=False)
 
-    assert result == "a" # Expect stripped output
+    assert result == "a"  # Expect stripped output
     mock_post.assert_called_once()
     call_args, call_kwargs = mock_post.call_args
     assert call_args[0] == "http://localhost:11434/api/generate"
@@ -527,7 +568,12 @@ def test_call_ollama_api_success_basic(mock_post, mock_sleep):
 @patch('time.sleep', return_value=None)
 @patch('requests.post')
 def test_call_ollama_api_success_cot(mock_post, mock_sleep):
-    """Tests a successful API call with CoT enabled and response parsing."""
+    """
+    Test a successful API call with Chain-of-Thought enabled.
+    
+    Verifies that the call_ollama_api function correctly handles CoT responses,
+    extracting the final answer after the thinking process.
+    """
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = {"response": "<think>\nThinking step 1.\nThinking step 2.\n</think>\n The final answer is: B "}
@@ -540,7 +586,7 @@ def test_call_ollama_api_success_cot(mock_post, mock_sleep):
 
     result = mcq_parser.call_ollama_api(prompt, model, valid_options, max_tokens, enable_cot=True)
 
-    assert result == "The final answer is: B" # Expect stripped output
+    assert result == "The final answer is: B"  # Expect stripped output
     mock_post.assert_called_once()
     call_args, call_kwargs = mock_post.call_args
     sent_payload = call_kwargs['json']
@@ -553,44 +599,45 @@ def test_call_ollama_api_success_cot(mock_post, mock_sleep):
 @patch('time.sleep', return_value=None)
 @patch('requests.post')
 def test_call_ollama_api_success_cot_no_think_tag(mock_post, mock_sleep):
-    """Tests CoT enabled but response doesn't contain the think tag."""
+    """
+    Test CoT handling when the API response lacks the <think> tag.
+
+    Verifies that the function still processes the response correctly,
+    stripping whitespace, even without the expected CoT structure when
+    enable_cot=True is specified.
+    """
     mock_response = MagicMock()
     mock_response.status_code = 200
-    mock_response.json.return_value = {"response": "  C  "}
+    mock_response.json.return_value = {"response": "  C  "} # Response without <think>...</think>
     mock_post.return_value = mock_response
 
     prompt = "Extract option with CoT: A B C D"
     model = "test-model-cot"
+    # Using default valid_options and max_tokens
 
     result = mcq_parser.call_ollama_api(prompt, model, enable_cot=True)
-    assert result == "C" # Expect stripped output
+
+    assert result == "C" # Expect stripped output, handled correctly despite missing tags
     mock_post.assert_called_once()
+    # Verify basic call structure aspects were set correctly for CoT
+    call_args, call_kwargs = mock_post.call_args
+    sent_payload = call_kwargs['json']
+    assert sent_payload['model'] == model
+    assert sent_payload['prompt'] == prompt
+    assert sent_payload['options']['num_predict'] == 150 # CoT increases predict length
+    assert 'stop' not in sent_payload['options']       # CoT removes stop tokens
     mock_sleep.assert_not_called()
 
 @patch('time.sleep', return_value=None)
 @patch('requests.post')
-def test_call_ollama_api_retry_on_connection_error(mock_post, mock_sleep):
-    """Tests retry logic on ConnectionError, eventually succeeding."""
-    mock_success_response = MagicMock()
-    mock_success_response.status_code = 200
-    mock_success_response.json.return_value = {"response": "d"}
-
-    mock_post.side_effect = [
-        requests.exceptions.ConnectionError("Attempt 1 failed"),
-        requests.exceptions.ConnectionError("Attempt 2 failed"),
-        mock_success_response
-    ]
-
-    result = mcq_parser.call_ollama_api("prompt", "model")
-
-    assert result == "d"
-    assert mock_post.call_count == 3
-    assert mock_sleep.call_count == 2
-
-@patch('time.sleep', return_value=None)
-@patch('requests.post')
 def test_call_ollama_api_retry_on_500_error(mock_post, mock_sleep):
-    """Tests retry logic on HTTP 500 error, eventually succeeding."""
+    """
+    Test retry logic on HTTP 500 error, eventually succeeding.
+    
+    Verifies that the call_ollama_api function correctly implements retry
+    logic when HTTP 500 errors occur, and returns the response when
+    a subsequent attempt succeeds.
+    """
     mock_500_response = MagicMock()
     mock_500_response.status_code = 500
     mock_500_response.raise_for_status.side_effect = requests.exceptions.HTTPError("Server Error")
@@ -614,8 +661,57 @@ def test_call_ollama_api_retry_on_500_error(mock_post, mock_sleep):
 
 @patch('time.sleep', return_value=None)
 @patch('requests.post')
+def test_call_ollama_api_retry_on_connection_error(mock_post, mock_sleep, capsys):
+    """
+    Test retry logic specifically for requests.exceptions.ConnectionError.
+
+    Verifies that the function retries the specified number of times upon
+    encountering connection errors during the API call and returns the
+    successful response if one occurs within the allowed retries. Also checks
+    that appropriate warning messages are printed during retries.
+    """
+    mock_success_response = MagicMock()
+    mock_success_response.status_code = 200
+    mock_success_response.json.return_value = {"response": " d "} # Response with spaces
+
+    # Simulate two connection errors followed by success
+    mock_post.side_effect = [
+        requests.exceptions.ConnectionError("Attempt 1 failed: Network unreachable"),
+        requests.exceptions.ConnectionError("Attempt 2 failed: Could not resolve host"),
+        mock_success_response
+    ]
+
+    prompt = "test prompt for connection error"
+    model = "retry-test-model"
+    result = mcq_parser.call_ollama_api(prompt, model) # Use defaults for other args
+
+    assert result == "d" # Check successful result after retries, with stripping
+    assert mock_post.call_count == 3 # Retried twice, succeeded on the 3rd attempt
+    assert mock_sleep.call_count == 2 # Slept between the failed attempts
+
+    # Check the arguments of the *last* (successful) call
+    final_call_args, final_call_kwargs = mock_post.call_args
+    assert final_call_args[0] == "http://localhost:11434/api/generate"
+    sent_payload = final_call_kwargs['json']
+    assert sent_payload['model'] == model
+    assert sent_payload['prompt'] == prompt
+
+    # Check that warnings were printed for the failed attempts
+    captured = capsys.readouterr()
+    assert "Retrying" in captured.out
+    assert "Attempt 1 failed: Network unreachable" in captured.out
+    assert "Attempt 2 failed: Could not resolve host" in captured.out
+
+@patch('time.sleep', return_value=None)
+@patch('requests.post')
 def test_call_ollama_api_max_retries_fail(mock_post, mock_sleep, capsys):
-    """Tests when all retry attempts fail."""
+    """
+    Test when all retry attempts fail.
+    
+    Verifies that the call_ollama_api function correctly handles the case
+    when all retry attempts fail, returning an empty string and logging
+    appropriate error messages.
+    """
     mock_post.side_effect = requests.exceptions.Timeout("Request timed out")
 
     result = mcq_parser.call_ollama_api("prompt", "model")
@@ -630,7 +726,12 @@ def test_call_ollama_api_max_retries_fail(mock_post, mock_sleep, capsys):
 @patch('time.sleep', return_value=None)
 @patch('requests.post')
 def test_call_ollama_api_missing_response_key(mock_post, mock_sleep, capsys):
-    """Tests response JSON missing the 'response' key."""
+    """
+    Test response JSON missing the 'response' key.
+    
+    Verifies that the call_ollama_api function correctly handles the case
+    when the response JSON is missing the expected 'response' key.
+    """
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = {"other_key": "some value"}
@@ -648,7 +749,12 @@ def test_call_ollama_api_missing_response_key(mock_post, mock_sleep, capsys):
 @patch('time.sleep', return_value=None)
 @patch('requests.post')
 def test_call_ollama_api_none_response_value(mock_post, mock_sleep, capsys):
-    """Tests response JSON where 'response' key has a None value."""
+    """
+    Test response JSON where 'response' key has a None value.
+    
+    Verifies that the call_ollama_api function correctly handles the case
+    when the 'response' key in the JSON response has a None value.
+    """
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = {"response": None}
@@ -663,7 +769,9 @@ def test_call_ollama_api_none_response_value(mock_post, mock_sleep, capsys):
     assert "All API attempts failed." not in captured.out
 
 
-# --- Tests for extract_predicted_option_llm ---
+# ============================================================================
+# Tests for extract_predicted_option_llm
+# ============================================================================
 
 # Sample examples for testing
 SAMPLE_EXAMPLES = [
@@ -674,7 +782,12 @@ SAMPLE_EXAMPLES = [
 # Use patch for the function *called* by the one under test
 @patch('mcq_parser.call_ollama_api')
 def test_extract_llm_basic_success(mock_call_api):
-    """Tests successful extraction via LLM (mocked)."""
+    """
+    Test successful extraction via LLM (mocked).
+    
+    Verifies that the extract_predicted_option_llm function correctly
+    processes a successful LLM response.
+    """
     mock_call_api.return_value = " c " # Simulate raw LLM response
     text = "Some long text about choices... the best is C."
     model = "test-llm"
@@ -696,7 +809,13 @@ def test_extract_llm_basic_success(mock_call_api):
 
 @patch('mcq_parser.call_ollama_api')
 def test_extract_llm_with_examples_and_cot(mock_call_api):
-    """Tests LLM extraction with examples and CoT enabled."""
+    """
+    Test LLM extraction with examples and Chain-of-Thought enabled.
+    
+    Verifies that the extract_predicted_option_llm function correctly formats
+    the prompt with few-shot examples and CoT instructions when these options
+    are enabled.
+    """
     mock_call_api.return_value = " The final option is: a"
     text = "Input requiring examples and reasoning."
     model = "test-llm-advanced"
@@ -726,7 +845,12 @@ def test_extract_llm_with_examples_and_cot(mock_call_api):
 
 @patch('mcq_parser.call_ollama_api')
 def test_extract_llm_no_answer_token(mock_call_api):
-    """Tests when the LLM should return the no_answer_token."""
+    """
+    Test when the LLM should return the no_answer_token.
+    
+    Verifies that the extract_predicted_option_llm function correctly handles
+    cases where the LLM returns the no_answer_token instead of a standard option.
+    """
     mock_call_api.return_value = " x " # LLM indicates no answer
     text = "Cannot determine the answer."
     no_answer = "x"
@@ -743,7 +867,12 @@ def test_extract_llm_no_answer_token(mock_call_api):
 
 @patch('mcq_parser.call_ollama_api')
 def test_extract_llm_api_returns_empty(mock_call_api):
-    """Tests when the mocked call_ollama_api returns an empty string."""
+    """
+    Test when the mocked call_ollama_api returns an empty string.
+    
+    Verifies that the extract_predicted_option_llm function correctly handles
+    the case when the underlying API call returns an empty response.
+    """
     mock_call_api.return_value = ""
     text = "Some input text."
 
@@ -755,7 +884,13 @@ def test_extract_llm_api_returns_empty(mock_call_api):
 
 @patch('mcq_parser.call_ollama_api')
 def test_extract_llm_api_returns_invalid(mock_call_api, capsys):
-    """Tests when the mocked call_ollama_api returns text not containing a valid option."""
+    """
+    Test when the mocked call_ollama_api returns text not containing a valid option.
+    
+    Verifies that the extract_predicted_option_llm function correctly handles
+    the case when the LLM returns text that doesn't contain a valid option,
+    attempting to use a fallback regex extraction and ultimately returning None.
+    """
     mock_call_api.return_value = "  invalid response "
     text = "Some input text."
 
@@ -772,7 +907,13 @@ def test_extract_llm_api_returns_invalid(mock_call_api, capsys):
 
 @patch('mcq_parser.call_ollama_api')
 def test_extract_llm_api_returns_verbose_but_valid(mock_call_api):
-    """Tests when the LLM returns extra text but contains a valid option."""
+    """
+    Test when the LLM returns extra text but contains a valid option.
+    
+    Verifies that the extract_predicted_option_llm function correctly handles
+    the case when the LLM returns verbose output that contains a valid option,
+    using the fallback regex extraction to find and return the correct option.
+    """
     mock_call_api.return_value = " The answer is clearly B, because reasons. "
 
     result = mcq_parser.extract_predicted_option_llm(
@@ -788,7 +929,13 @@ def test_extract_llm_api_returns_verbose_but_valid(mock_call_api):
 # This is a simplified check focusing on whether truncation marker appears.
 @patch('mcq_parser.call_ollama_api')
 def test_extract_llm_truncation(mock_call_api, capsys):
-    """Tests if text truncation occurs when text + examples exceed max_tokens."""
+    """
+    Test if text truncation occurs when text + examples exceed max_tokens.
+    
+    Verifies that the extract_predicted_option_llm function correctly implements
+    truncation logic when the input text would exceed the available token limit,
+    adding a truncation marker and logging appropriate warnings.
+    """
     mock_call_api.return_value = " a "
     # Create very long text (estimation: > (500 - 200 - examples) * 4 chars)
     long_text = "word " * 500
@@ -809,9 +956,11 @@ def test_extract_llm_truncation(mock_call_api, capsys):
     assert "Text too long" in captured.out
     assert "truncating" in captured.out
 
-# --- Updated Tests for process_predictions ---
+# ============================================================================
+# Tests for process_predictions
+# ============================================================================
 
-# Sample DataFrame fixture (can reuse existing one)
+# Sample DataFrame fixture for processing tests
 @pytest.fixture
 def sample_processing_data():
     return pd.DataFrame({
@@ -829,9 +978,14 @@ def sample_processing_data():
     })
 
 
-# Test scenario 1: Regex only (No change needed, assumed correct from previous test file)
+# Test scenario 1: Regex only
 def test_process_predictions_regex_only(sample_processing_data):
-    """Tests processing with only regex extraction."""
+    """
+    Test processing with only regex extraction.
+    
+    Verifies that the process_predictions function correctly extracts
+    options using regex when LLM extraction is disabled.
+    """
     df = sample_processing_data.copy()
     target_col = 'raw_prediction'
     reference_col = 'reference'
@@ -869,11 +1023,16 @@ def test_process_predictions_regex_only(sample_processing_data):
     assert final_labels[4] in {'b', 'c', 'd'} # ref=a
     assert final_labels[5] in {'a', 'b', 'c'} # ref=d
 
-# Test scenario 2: Regex + LLM Fallback (No change needed, assumed correct)
+# Test scenario 2: Regex + LLM Fallback
 @patch('mcq_parser.check_ollama_availability', return_value=True)
 @patch('mcq_parser.extract_predicted_option_llm')
 def test_process_predictions_regex_llm_fallback(mock_extract_llm, mock_check_ollama, sample_processing_data):
-    """Tests processing with regex + LLM fallback."""
+    """
+    Test processing with regex + LLM fallback.
+    
+    Verifies that the process_predictions function correctly uses LLM extraction
+    as a fallback mechanism when regex extraction fails for certain inputs.
+    """
     df = sample_processing_data.copy()
     target_col = 'raw_prediction'
     reference_col = 'reference'
@@ -921,14 +1080,17 @@ def test_process_predictions_regex_llm_fallback(mock_extract_llm, mock_check_oll
     assert 'Final Answer: x' in call_texts
     assert 'Result: 5 (out of range)' in call_texts
 
-
-# **** NEW/MODIFIED TEST ****
 # Test scenario 3: LLM Only (Skip Regex) - VERIFYING THE FIX
 @patch('mcq_parser.check_ollama_availability', return_value=True)
 @patch('mcq_parser.extract_predicted_option') # Mock the REGEX function
 @patch('mcq_parser.extract_predicted_option_llm') # Mock the LLM function
 def test_process_predictions_llm_only_skip_regex_works(mock_extract_llm, mock_extract_regex, mock_check_ollama, sample_processing_data):
-    """Tests processing with LLM only, ensuring regex is actually skipped."""
+    """
+    Test processing with LLM only, ensuring regex is actually skipped.
+    
+    This test verifies that when skip_regex=True, the extraction pipeline
+    bypasses the regex extraction step completely and relies solely on the LLM.
+    """
     df = sample_processing_data.copy()
     target_col = 'raw_prediction'
     reference_col = 'reference'
@@ -993,11 +1155,17 @@ def test_process_predictions_llm_only_skip_regex_works(mock_extract_llm, mock_ex
     assert final_labels[5] in {'a', 'b', 'c'}
 
 
-# Test scenario 4: LLM enabled but unavailable (No change needed)
+# Test scenario 4: LLM enabled but unavailable
 @patch('mcq_parser.check_ollama_availability', return_value=False)
 @patch('mcq_parser.extract_predicted_option_llm')
 def test_process_predictions_llm_unavailable(mock_extract_llm, mock_check_ollama, sample_processing_data, capsys):
-    """Tests processing when use_llm=True but Ollama is unavailable."""
+    """
+    Test processing when use_llm=True but Ollama is unavailable.
+    
+    Verifies that the process_predictions function correctly handles the case
+    when LLM extraction is enabled but the Ollama service is not available,
+    falling back to regex-only extraction.
+    """
     df = sample_processing_data.copy()
     target_col = 'raw_prediction'
     reference_col = 'reference'
@@ -1040,13 +1208,19 @@ def test_process_predictions_llm_unavailable(mock_extract_llm, mock_check_ollama
     captured = capsys.readouterr()
     assert "Ollama API not available" in captured.out
 
-# **** NEW TEST ****
 # Test scenario 5: Skip Regex, LLM Unavailable
 @patch('mcq_parser.check_ollama_availability', return_value=False)
 @patch('mcq_parser.extract_predicted_option') # Mock regex
 @patch('mcq_parser.extract_predicted_option_llm') # Mock llm
 def test_process_predictions_skip_regex_llm_unavailable(mock_extract_llm, mock_extract_regex, mock_check_ollama, sample_processing_data, capsys):
-    """Tests skipping regex when LLM is also unavailable."""
+    """
+    Test skipping regex when LLM is also unavailable.
+    
+    Verifies that the process_predictions function correctly handles the
+    edge case when regex extraction is disabled (skip_regex=True) but
+    LLM extraction is also unavailable, resulting in no extraction being
+    performed and random assignment being used for all predictions.
+    """
     df = sample_processing_data.copy()
     target_col = 'raw_prediction'
     reference_col = 'reference'
